@@ -24,10 +24,15 @@ if not exist "venv" (
     python -m venv venv
     call venv\Scripts\activate.bat
     echo Installing Python dependencies...
-    pip install "fastapi[all]" sqlmodel psycopg2-binary passlib bcrypt pyjwt
+    pip install -r requirements.txt
 ) else (
     call venv\Scripts\activate.bat
+    echo Checking Python dependencies...
+    pip install -r requirements.txt
 )
+echo Updating database schema...
+python create_tables.py
+alembic upgrade head
 cd ..
 
 :: 3. Open Browser

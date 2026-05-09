@@ -1,6 +1,5 @@
-from sqlmodel import SQLModel, create_engine
+from database import create_db_and_tables
 import models
 
-engine = create_engine('postgresql://postgres:1234@localhost:5432/cyber_trainer')
-SQLModel.metadata.create_all(engine)
+create_db_and_tables()
 print("Tables created")
