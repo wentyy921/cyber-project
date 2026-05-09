@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply m-0 p-0 min-h-screen font-sans antialiased text-gray-100 bg-[#0B0F19];
+    /* background: radial-gradient(circle at top right, #1f2937, #0B0F19); */
+  }
+
+  /* Custom scrollbar for webkit */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/20 rounded-full hover:bg-white/30 transition-colors;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 rounded-3xl;
+  }
+  
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 shadow-lg hover:bg-white/10 hover:border-white/20 transition-all duration-300 rounded-2xl;
+  }
+
+  .glass-input {
+    @apply bg-black/20 backdrop-blur-md border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 rounded-xl transition-all;
+  }
+
+  .glass-button {
+    @apply bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl;
+  }
+  
+  .glass-button-primary {
+    @apply bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 border border-white/10 transition-all duration-300 rounded-xl;
+  }
+
+  .bg-mesh {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    overflow: hidden;
+    background: #0B0F19;
+  }
+
+  .bg-mesh::before, .bg-mesh::after {
+    content: "";
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.5;
+    animation: blob 20s infinite alternate;
+  }
+
+  .bg-mesh::before {
+    top: -10%;
+    left: -10%;
+    background: rgba(79, 70, 229, 0.4); /* Indigo */
+  }
+
+  .bg-mesh::after {
+    bottom: -10%;
+    right: -10%;
+    background: rgba(147, 51, 234, 0.3); /* Purple */
+    animation-delay: -10s;
+  }
+  
+  .bg-mesh-3 {
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.4;
+    top: 40%;
+    left: 40%;
+    background: rgba(14, 165, 233, 0.3); /* Sky Blue */
+    animation: blob 25s infinite alternate-reverse;
+  }
+}
