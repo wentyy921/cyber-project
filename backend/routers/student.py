@@ -164,15 +164,21 @@ class MarkViewed(BaseModel):
 
 @router.post("/mark-lecture-viewed")
 def mark_lecture_viewed(data: MarkViewed, session: Session = Depends(get_session)):
-    from sqlalchemy.dialects.postgresql import insert
+    from sqlmodel import select
+    from models import moscow_now
     
-    stmt = insert(StudentLecturesView).values(student_id=data.studentId, course_id=data.courseId)
-    # ON CONFLICT DO UPDATE
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['student_id', 'course_id'],
-        set_=dict(viewed_at=stmt.excluded.viewed_at)
-    )
-    session.execute(stmt)
+    existing = session.exec(select(StudentLecturesView).where(
+        StudentLecturesView.student_id == data.studentId,
+        StudentLecturesView.course_id == data.courseId
+    )).first()
+    
+    if existing:
+        existing.viewed_at = moscow_now()
+        session.add(existing)
+    else:
+        new_view = StudentLecturesView(student_id=data.studentId, course_id=data.courseId)
+        session.add(new_view)
+        
     session.commit()
     return {"success": True, "message": "View recorded"}
 
