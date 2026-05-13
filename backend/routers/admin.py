@@ -8,17 +8,25 @@ from dependencies import get_current_user, get_session, log_action
 from auth import get_password_hash
 from pydantic import BaseModel
 
+# Роутер администратора. Изолирует все функции управления системой в отдельном пространстве имен.
+# Префикс /api/admin гарантирует, что эти маршруты не пересекутся с клиентскими.
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
+# Зависимость (Dependency) для жесткой проверки роли пользователя.
+# Архитектурно она внедряется во все эндпоинты этого файла, образуя
+# "охранник маршрута" (Route Guard). Любой не-админ получит ошибку 403.
 def get_admin(current_user: Annotated[User, Depends(get_current_user)]):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Доступ только для администраторов")
     return current_user
 
+# Получение списка всех пользователей системы.
+# Для безопасности пароли удаляются из ответа перед отправкой клиенту,
+# так как передача хэшей может стать вектором атаки (offline cracking).
 @router.get("/users")
 def get_all_users(admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     users = session.exec(select(User)).all()
-    # Remove passwords from response for security
+    # Фильтрация конфиденциальных данных. Формирование DTO (Data Transfer Object) вручную.
     safe_users = []
     for u in users:
         safe_users.append({
@@ -33,6 +41,7 @@ def get_all_users(admin: Annotated[User, Depends(get_admin)], session: Session =
         })
     return safe_users
 
+# Модель запроса для операции изменения статуса блокировки (legacy маршрут, дублирует ban_user).
 class BlockUserReq(BaseModel):
     userId: int
     blockAction: int
@@ -46,12 +55,15 @@ def block_user(data: BlockUserReq, admin: Annotated[User, Depends(get_admin)], s
     user.is_blocked = data.blockAction
     session.add(user)
     
+    # Системное логирование изменения статуса пользователя для аудита
     action = "USER_BLOCKED" if data.blockAction == 1 else "USER_UNBLOCKED"
     log_action(session, action, f"Пользователь {user.username} (ID: {user.id}) был {'заблокирован' if data.blockAction == 1 else 'разблокирован'}", admin)
     
     session.commit()
     return {"success": True}
 
+# Получение последних 100 записей системного аудита (из базы данных).
+# Запрос сортируется по убыванию времени создания, чтобы отображать самые свежие события.
 @router.get("/logs")
 def get_system_logs(admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     statement = select(SystemLog).order_by(SystemLog.created_at.desc()).limit(100)
@@ -59,6 +71,9 @@ def get_system_logs(admin: Annotated[User, Depends(get_admin)], session: Session
 
 import os
 
+# Прямое чтение файла server.log для админской панели.
+# Это позволяет администратору анализировать ошибки, падения FastAPI и трассировки стека
+# непосредственно через графический интерфейс, без необходимости подключаться к серверу по SSH.
 @router.get("/server_logs")
 def get_server_logs(admin: Annotated[User, Depends(get_admin)]):
     log_file = "server.log"
@@ -69,6 +84,7 @@ def get_server_logs(admin: Annotated[User, Depends(get_admin)]):
         lines = f.readlines()
         return {"logs": "".join(lines[-500:])}
 
+# Схема для ручного создания пользователя администратором (включая преподавателей).
 class CreateUserReq(BaseModel):
     username: str
     password: str
@@ -76,6 +92,9 @@ class CreateUserReq(BaseModel):
     email: str
     role: str
 
+# Эндпоинт ручного создания учетной записи.
+# Важная бизнес-логика: проверка уникальности логина перед вставкой,
+# чтобы избежать исключений ограничения уникальности (UniqueConstraint) базы данных.
 @router.post("/create_user")
 def create_user(data: CreateUserReq, admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     existing = session.exec(select(User).where(User.username == data.username)).first()
@@ -92,13 +111,18 @@ def create_user(data: CreateUserReq, admin: Annotated[User, Depends(get_admin)],
     )
     session.add(user)
     session.commit()
+    # Запись события в системный лог
     log_action(session, "USER_CREATED", f"Создан пользователь {user.username} с ролью {user.role}", admin)
     return {"success": True}
 
+# Схема для операции бана (более современная версия block_user).
 class BanUserReq(BaseModel):
     userId: int
     is_blocked: int
 
+# Блокировка или разблокировка доступа в систему.
+# Содержит защитный механизм (self-ban prevention), не позволяющий администратору
+# случайно заблокировать собственный аккаунт.
 @router.post("/ban_user")
 def ban_user(data: BanUserReq, admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     user = session.get(User, data.userId)
@@ -118,6 +142,7 @@ def ban_user(data: BanUserReq, admin: Annotated[User, Depends(get_admin)], sessi
     
     return {"success": True}
 
+# Схема редактирования профиля пользователя (используется в модальном окне веб-панели).
 class EditUserReq(BaseModel):
     userId: int
     username: str
@@ -126,6 +151,9 @@ class EditUserReq(BaseModel):
     role: str
     password: str | None = None
 
+# Изменение данных пользователя администратором.
+# Включает сложную проверку: если администратор меняет логин (username),
+# необходимо убедиться, что новый логин не принадлежит другому пользователю.
 @router.post("/edit_user")
 def edit_user(data: EditUserReq, admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     user = session.get(User, data.userId)
@@ -142,6 +170,8 @@ def edit_user(data: EditUserReq, admin: Annotated[User, Depends(get_admin)], ses
     user.email = data.email
     user.role = data.role
     
+    # Смена пароля происходит только в том случае, если поле password передано (не None).
+    # Иначе старый хэш пароля сохраняется в базе без изменений.
     if data.password:
         user.password = get_password_hash(data.password)
         
@@ -155,6 +185,8 @@ def edit_user(data: EditUserReq, admin: Annotated[User, Depends(get_admin)], ses
 class DeleteUserReq(BaseModel):
     userId: int
 
+# Эндпоинт жесткого удаления (Hard Delete) пользователя из базы данных.
+# Также включает защиту от удаления собственного профиля.
 @router.post("/delete_user")
 def delete_user(data: DeleteUserReq, admin: Annotated[User, Depends(get_admin)], session: Session = Depends(get_session)):
     user = session.get(User, data.userId)

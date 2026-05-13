@@ -5,12 +5,17 @@ import api from '../services/api';
 import { Book, FileQuestion, Clock, Rocket } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// Главный экран кабинета студента в мобильном приложении.
+// Использует SectionList для разделения контента на логические группы (Лекции и Экзамены).
 export default function DashboardScreen() {
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Состояние для механизма Pull-to-Refresh
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation<any>();
 
+  // Загрузка образовательного контента из API
   const fetchCourses = async () => {
     try {
       const res = await api.get('/courses');
@@ -27,15 +32,18 @@ export default function DashboardScreen() {
     fetchCourses();
   }, []);
 
+  // Обработчик обновления свайпом вниз
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchCourses();
   }, []);
 
-  // Group courses
+  // Бизнес-логика: группировка полученного списка.
+  // Разделяет массив объектов на две независимые категории на основе поля 'type'.
   const lessons = courses.filter(c => c.type !== 'exam');
   const exams = courses.filter(c => c.type === 'exam');
 
+  // Формирование структуры данных для компонента SectionList
   const sections = [];
   if (lessons.length > 0) {
     sections.push({ title: 'Учебные материалы', data: lessons });
@@ -44,6 +52,7 @@ export default function DashboardScreen() {
     sections.push({ title: 'Доступные экзамены', data: exams });
   }
 
+  // Рендеринг мотивационного баннера в верхней части экрана (Геймификация)
   const renderBanner = () => (
     <View style={styles.bannerContainer}>
       <View style={styles.bannerBorder}>
@@ -63,17 +72,20 @@ export default function DashboardScreen() {
     </View>
   );
 
+  // Рендеринг карточки элемента (Курса или Экзамена).
+  // Использует LinearGradient для улучшения визуального восприятия.
   const renderItem = ({ item }: { item: any }) => {
     const isExam = item.type === 'exam';
     
-    // Different gradients for Exams (Red/Orange) and Lessons (Blue/Purple)
+    // Цветовое кодирование: Красный/Оранжевый для экзаменов, Синий/Фиолетовый для лекций.
+    // Позволяет пользователю мгновенно отличать тип контента периферийным зрением.
     const colors = isExam ? ['#f97316', '#ef4444'] : ['#4f46e5', '#3b82f6'];
     const buttonColors = isExam ? ['#fb923c', '#f87171'] : ['#8b5cf6', '#a855f7'];
 
     return (
       <TouchableOpacity 
         style={styles.cardContainer}
-        activeOpacity={0.8}
+        activeOpacity={0.8} // Эффект нажатия (Feedback)
         onPress={() => navigation.navigate('CourseDetail', { course: item })}
       >
         <LinearGradient
@@ -85,6 +97,7 @@ export default function DashboardScreen() {
           <View style={styles.circleDecoration} />
         </LinearGradient>
         <View style={styles.cardContent}>
+          {/* numberOfLines={1} предотвращает переполнение текста (Truncation) */}
           <Text style={styles.courseTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.courseDescription} numberOfLines={1}>{item.description || 'Описание отсутствует'}</Text>
           
@@ -123,9 +136,11 @@ export default function DashboardScreen() {
           renderSectionHeader={renderSectionHeader}
           ListHeaderComponent={renderBanner}
           contentContainerStyle={styles.listContainer}
+          // Интеграция жеста "Потянуть для обновления"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38bdf8" />
           }
+          // Fallback UI при пустом ответе сервера
           ListEmptyComponent={
             <Text style={styles.emptyText}>Доступных материалов пока нет.</Text>
           }
@@ -250,3 +265,4 @@ const styles = StyleSheet.create({
     marginTop: 40,
   }
 });
+

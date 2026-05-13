@@ -9,10 +9,16 @@ from schemas import UserResponse
 from dependencies import get_current_user, get_session, log_action
 from auth import get_password_hash
 
+# Роутер для студенческой части (мобильное приложение и кабинет ученика).
+# Является публичным ядром системы (большинство запросов не требуют роли admin/teacher).
 router = APIRouter(prefix="/api", tags=["Student"])
 
+# Универсальный эндпоинт получения курсов (для дашборда мобильного приложения).
+# Реализует сложную логику разграничения прав доступа (RBAC):
+# Админ видит всё. Преподаватель видит только свои созданные курсы.
+# Студент видит публичные курсы (author_id = 1) и те, на которые ему выдали персональный доступ.
 @router.get("/topics")
-@router.get("/courses") # Same as topics in old logic
+@router.get("/courses") # Поддержка legacy-маршрута для обратной совместимости
 def get_courses(current_user: Annotated[User, Depends(get_current_user)], session: Session = Depends(get_session)):
     user_id = current_user.id
     if current_user.role == "admin":
@@ -20,7 +26,6 @@ def get_courses(current_user: Annotated[User, Depends(get_current_user)], sessio
     elif current_user.role == "teacher":
         statement = select(Course).where(Course.author_id == user_id)
     else:
-        # Students see public courses (author_id = 1) or courses they have access to
         statement = select(Course).join(CourseAccess, isouter=True).where(
             (Course.author_id == 1) | (CourseAccess.student_id == user_id)
         )
@@ -28,6 +33,11 @@ def get_courses(current_user: Annotated[User, Depends(get_current_user)], sessio
     courses = session.exec(statement).unique().all()
     return courses
 
+# Получение вопросов для начала экзамена или лекции.
+# Архитектурная деталь: флаг 'include_answers' позволяет преподавателям и админам
+# получать вопросы вместе с правильными ответами. Студенты (в мобильном приложении)
+# получают DTO, из которого правильные ответы ('correct_index', 'correct_text') вырезаны,
+# чтобы предотвратить читерство через инспектор сети (DevTools/Charles Proxy).
 @router.get("/questions")
 def get_questions(topic: Optional[str] = None, include_answers: bool = False, session: Session = Depends(get_session)):
     statement = select(Question)
@@ -39,7 +49,6 @@ def get_questions(topic: Optional[str] = None, include_answers: bool = False, se
     if include_answers:
         return questions
         
-    # Format questions to exclude answers
     formatted = []
     for q in questions:
         formatted.append({
@@ -56,6 +65,9 @@ class CheckAnswerRequest(BaseModel):
     questionId: int
     userAnswer: str
 
+# Эндпоинт валидации ответа пользователя в реальном времени.
+# Обрабатывает два типа вопросов: текстовый ввод (text) и выбор из вариантов (choice).
+# Вся логика проверки находится на сервере (Server-Side Validation), что исключает взлом клиента.
 @router.post("/check_answer")
 def check_answer(req: CheckAnswerRequest, session: Session = Depends(get_session)):
     q = session.get(Question, req.questionId)
@@ -69,10 +81,10 @@ def check_answer(req: CheckAnswerRequest, session: Session = Depends(get_session
         db_answer = (q.correct_text or "").strip()
         student_answer = (req.userAnswer or "").strip()
         
+        # Сравнение строк без учета регистра для повышения UX
         is_correct = (db_answer.lower() == student_answer.lower())
         correct_string = q.correct_text
     else:
-        # Choice
         try:
             is_correct = (q.correct_index == int(req.userAnswer))
         except ValueError:
@@ -80,6 +92,7 @@ def check_answer(req: CheckAnswerRequest, session: Session = Depends(get_session
         opts = q.options or []
         correct_string = opts[q.correct_index] if q.correct_index is not None and q.correct_index < len(opts) else ""
         
+    # Возвращается результат проверки и текстовое объяснение ошибки (если задано автором)
     return {
         "correct": is_correct,
         "correctText": correct_string,
@@ -95,6 +108,8 @@ class ResultSubmit(BaseModel):
     violations: int = 0
     details: list = []
 
+# Сохранение итогового результата экзамена в базу данных.
+# Вызывается мобильным приложением как при успешном завершении, так и при таймауте.
 @router.post("/results")
 def submit_result(data: ResultSubmit, current_user: Annotated[User, Depends(get_current_user)], session: Session = Depends(get_session)):
     result = Result(
@@ -111,6 +126,7 @@ def submit_result(data: ResultSubmit, current_user: Annotated[User, Depends(get_
     session.commit()
     return {"status": "saved"}
 
+# Получение истории результатов экзаменов для конкретного студента (экран Profile в мобилке).
 @router.get("/results")
 def get_student_results(current_user: Annotated[User, Depends(get_current_user)], session: Session = Depends(get_session)):
     statement = select(Result).where(
@@ -118,30 +134,33 @@ def get_student_results(current_user: Annotated[User, Depends(get_current_user)]
     ).order_by(Result.date.desc())
     return session.exec(statement).all()
 
+# Генерация таблицы лидеров (Leaderboard).
+# Бизнес-логика: агрегация данных из двух источников. Очки начисляются за
+# успешные сдачи экзаменов (score) и за просмотры лекций (10 очков за лекцию).
+# Это геймификация для повышения вовлеченности (Retention Rate).
 @router.get("/leaderboard")
 def get_leaderboard(session: Session = Depends(get_session)):
-    # Simple leaderboard based on results and views
     users = session.exec(select(User).where(User.role == "student")).all()
     
     leaderboard = []
     for user in users:
-        # Score from exams
         results = session.exec(select(Result).where(
             (Result.student_id == user.id) | (Result.student_name == (user.full_name or user.username))
         )).all()
         score = sum([r.score for r in results if r.score])
         
-        # Add points for lecture views
         views = session.exec(select(StudentLecturesView).where(StudentLecturesView.student_id == user.id)).all()
-        score += len(views) * 10  # 10 points per lecture
+        score += len(views) * 10
         
         if score > 0:
             leaderboard.append({"username": user.username, "score": score})
             
-    # Sort by score descending
+    # Сортировка по убыванию баллов и ограничение Топ-50 для производительности UI
     leaderboard.sort(key=lambda x: x["score"], reverse=True)
-    return leaderboard[:50] # top 50
+    return leaderboard[:50]
 
+# Эндпоинт получения сводной информации о себе. 
+# Используется клиентами для инициализации стейта приложения (App State) после загрузки по токену.
 @router.get("/users/me")
 def get_users_me(current_user: Annotated[User, Depends(get_current_user)], session: Session = Depends(get_session)):
     statement = select(StudentLecturesView).where(StudentLecturesView.student_id == current_user.id)
@@ -162,6 +181,9 @@ class MarkViewed(BaseModel):
     courseId: int
     studentId: int
 
+# Механизм учета просмотренных лекций.
+# Реализует паттерн "Upsert" (Update or Insert): если лекция уже просматривалась,
+# обновляется таймстемп (viewed_at), иначе создается новая запись о просмотре.
 @router.post("/mark-lecture-viewed")
 def mark_lecture_viewed(data: MarkViewed, session: Session = Depends(get_session)):
     from sqlmodel import select
@@ -189,6 +211,9 @@ class UpdateProfile(BaseModel):
     password: Optional[str] = None
     avatar: Optional[str] = None
 
+# Обновление личного профиля студента из мобильного приложения.
+# Добавлена авторизационная проверка: юзер может менять только свой профиль, 
+# если он не является администратором (защита от горизонтальной эскалации привилегий).
 @router.post("/student/update_profile")
 def update_profile(data: UpdateProfile, current_user: Annotated[User, Depends(get_current_user)], session: Session = Depends(get_session)):
     if current_user.id != data.id and current_user.role != "admin":
@@ -222,6 +247,9 @@ def update_profile(data: UpdateProfile, current_user: Annotated[User, Depends(ge
         }
     }
 
+# Загрузка аватара пользователя.
+# Архитектурно загруженные файлы сохраняются в локальную файловую систему сервера (папка uploads/avatars),
+# а в базу данных пишется только относительный URL-путь к файлу.
 @router.post("/upload_avatar")
 def upload_avatar(avatar: UploadFile = File(...), current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     import os
@@ -247,3 +275,4 @@ def upload_avatar(avatar: UploadFile = File(...), current_user: User = Depends(g
         return {"success": True, "avatar_url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

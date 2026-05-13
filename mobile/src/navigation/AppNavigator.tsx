@@ -18,22 +18,27 @@ import ArticleScreen from '../screens/ArticleScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
 
+// Инициализация стековых и таб-навигаторов (React Navigation v6).
+// Stack Navigator обеспечивает линейную навигацию (push/pop) для глубоких экранов (экзамены, лекции).
 const Stack = createNativeStackNavigator();
+// Tab Navigator обеспечивает плоскую навигацию между основными разделами приложения.
 const Tab = createBottomTabNavigator();
 
+// Компонент нижнего меню (Bottom Tabs).
+// Архитектурно инкапсулирует основные корневые экраны пользователя (Студента).
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerShown: false,
+        headerShown: false, // Отключение встроенных заголовков для кастомной стилизации экранов
         tabBarStyle: {
-          backgroundColor: '#1e293b',
+          backgroundColor: '#1e293b', // Темная тема оформления (Slate 800)
           borderTopColor: 'rgba(255,255,255,0.1)',
           paddingBottom: 5,
           paddingTop: 5,
         },
-        tabBarActiveTintColor: '#38bdf8',
-        tabBarInactiveTintColor: '#94a3b8',
+        tabBarActiveTintColor: '#38bdf8', // Sky 400 (Активное состояние)
+        tabBarInactiveTintColor: '#94a3b8', // Slate 400 (Неактивное состояние)
       }}
     >
       <Tab.Screen 
@@ -80,9 +85,13 @@ function MainTabs() {
   );
 }
 
+// Корневой навигатор приложения (Root Navigator).
+// Реализует паттерн "Authentication Flow": переключает стеки навигации 
+// в зависимости от состояния авторизации (user ? AppStack : AuthStack).
 export default function AppNavigator() {
   const { user, isLoading } = useAuth();
 
+  // Ожидание завершения восстановления сессии (валидация токена из AsyncStorage)
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
@@ -95,6 +104,8 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
+          // Авторизованная зона (Protected Routes). 
+          // Пользователь имеет доступ к табам (MainTabs) и скрытым экранам деталей.
           <>
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
@@ -103,9 +114,11 @@ export default function AppNavigator() {
             <Stack.Screen name="Article" component={ArticleScreen} />
           </>
         ) : (
+          // Неавторизованная зона (Public Routes). Только экран входа.
           <Stack.Screen name="Login" component={LoginScreen} />
         )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
+

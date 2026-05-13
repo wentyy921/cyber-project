@@ -9,23 +9,31 @@ import Leaderboard from './student/Leaderboard';
 import KnowledgeBase from './student/KnowledgeBase';
 import Calendar from './student/Calendar';
 
+// Главный лейаут студенческой части приложения (Student Dashboard).
+// Архитектурно оборачивает все дочерние компоненты студента в единый интерфейс 
+// с адаптивной боковой навигацией (Sidebar) и центральной областью (Main Content Area).
 const StudentDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Логика выхода из аккаунта. Очищает AuthContext и сессию.
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
+  // Вспомогательная функция для подсветки активного раздела в меню.
+  // Анализирует React Router Location для динамического изменения стилей ссылок.
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
   return (
     <div className="flex flex-col md:flex-row h-screen overflow-hidden p-4 gap-4 relative z-10">
-      {/* Sidebar */}
+      {/* Sidebar (Боковое меню)
+          На мобильных устройствах (md-) отображается как верхняя панель (flex-col).
+          Стилизовано с применением паттерна Glassmorphism. */}
       <aside className="glass-panel w-full md:w-72 flex flex-col shrink-0 overflow-y-auto">
         <div className="p-6 border-b border-white/10">
           <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400 flex items-center gap-2">
@@ -35,6 +43,7 @@ const StudentDashboard = () => {
           <p className="text-sm text-gray-300 mt-2 truncate">Привет, {user?.fullName || user?.username}!</p>
         </div>
         
+        {/* Навигационные ссылки. Использование <Link> предотвращает полную перезагрузку страницы (SPA-роутинг). */}
         <nav className="flex-1 p-4 space-y-2">
           <Link
             to="/student"
@@ -108,7 +117,8 @@ const StudentDashboard = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content Area (Окно рендеринга активного маршрута).
+          Вложенный роутер загружает компоненты (CourseList, Quiz и т.д.) без перерисовки Sidebar'а. */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto glass-panel">
         <Routes>
           <Route path="/" element={<CourseList />} />
@@ -125,3 +135,4 @@ const StudentDashboard = () => {
 };
 
 export default StudentDashboard;
+

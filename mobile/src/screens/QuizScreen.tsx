@@ -4,26 +4,33 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { ChevronLeft, Clock } from 'lucide-react-native';
 import api from '../services/api';
 
+// Экран прохождения тестирования (Quiz/Exam).
+// Реализует сложную бизнес-логику таймера, подсчета баллов и защиты от мошенничества.
 export default function QuizScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { course } = route.params;
 
+  // Состояние экзамена
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   
+  // Состояние текущего ответа
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [textAnswer, setTextAnswer] = useState('');
   
   const [isAnswered, setIsAnswered] = useState(false);
   const [feedback, setFeedback] = useState<any>(null);
   
+  // Состояние результатов
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
 
+  // Глобальный таймер экзамена. Инициализируется лимитом из настроек курса (в секундах).
   const [timeLeft, setTimeLeft] = useState<number>((course.time_limit || 10) * 60);
 
+  // Загрузка пула вопросов для текущего экзамена
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
@@ -38,9 +45,12 @@ export default function QuizScreen() {
     fetchQuestions();
   }, [course.slug]);
 
+  // Функция завершения экзамена. Отправляет финальные результаты на сервер.
+  // Используется useCallback для стабильной ссылки при передаче в useEffect.
   const finishQuiz = useCallback(async (finalScore: number) => {
     setIsFinished(true);
     try {
+      // Порог прохождения экзамена жестко задан на уровне 70% (0.7)
       await api.post('/results', {
         topic: course.slug,
         score: finalScore,
@@ -52,6 +62,7 @@ export default function QuizScreen() {
     }
   }, [course.slug, questions.length]);
 
+  // Обработчик таймера. Автоматически завершает экзамен при истечении времени.
   useEffect(() => {
     if (isLoading || isFinished || questions.length === 0) return;
 
@@ -59,6 +70,7 @@ export default function QuizScreen() {
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(timer);
+          // Учет потенциально верного ответа на текущий вопрос, если он еще не был проверен
           finishQuiz(score + (feedback?.correct && !isAnswered ? 1 : 0));
           return 0;
         }
@@ -69,6 +81,8 @@ export default function QuizScreen() {
     return () => clearInterval(timer);
   }, [isLoading, isFinished, questions.length, score, feedback, isAnswered, finishQuiz]);
 
+  // Валидация ответа.
+  // Запрос отправляется на сервер для Server-Side проверки (защита от читерства на клиенте).
   const handleCheck = async () => {
     const q = questions[currentQIndex];
     const answer = q.type === 'text' ? textAnswer : selectedOption?.toString();
@@ -94,6 +108,7 @@ export default function QuizScreen() {
     }
   };
 
+  // Переход к следующему вопросу или завершение экзамена, если вопрос последний.
   const handleNext = async () => {
     if (currentQIndex < questions.length - 1) {
       setCurrentQIndex(prev => prev + 1);
@@ -106,6 +121,7 @@ export default function QuizScreen() {
     }
   };
 
+  // Утилита форматирования секунд в формат MM:SS для отображения в UI
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -128,6 +144,7 @@ export default function QuizScreen() {
     );
   }
 
+  // Экран результатов. Заменяет контент текущего экрана после вызова finishQuiz().
   if (isFinished) {
     return (
       <View style={styles.container}>
@@ -156,6 +173,8 @@ export default function QuizScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header с таймером. 
+          Если остается менее минуты (timeLeft < 60), таймер становится красным для привлечения внимания */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft color="#f8fafc" size={28} />
@@ -172,6 +191,8 @@ export default function QuizScreen() {
       <ScrollView style={styles.content}>
         <Text style={styles.questionText}>{currentQ.question}</Text>
         
+        {/* Рендеринг вариантов ответа. 
+            Стили зависят от состояния: Выбрано, Правильно, Ошибочно. */}
         {currentQ.type !== 'text' && currentQ.options?.map((opt: string, idx: number) => {
           const isSelected = selectedOption === idx;
           let boxStyle = styles.optionBox;
@@ -190,13 +211,15 @@ export default function QuizScreen() {
               key={idx} 
               style={boxStyle}
               onPress={() => !isAnswered && setSelectedOption(idx)}
-              disabled={isAnswered}
+              disabled={isAnswered} // Блокировка изменения ответа после проверки
             >
               <Text style={styles.optionText}>{opt}</Text>
             </TouchableOpacity>
           );
         })}
 
+        {/* Блок обратной связи (Feedback). 
+            Показывается после ответа, демонстрируя правильный вариант и объяснение. */}
         {isAnswered && (
           <View style={[styles.feedbackBox, feedback.correct ? styles.feedbackCorrect : styles.feedbackWrong]}>
             <Text style={styles.feedbackTitle}>

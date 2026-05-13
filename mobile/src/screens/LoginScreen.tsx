@@ -4,13 +4,20 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { Shield } from 'lucide-react-native';
 
+// Экран авторизации мобильного приложения.
+// Является публичным (не требует JWT-токена). 
 export default function LoginScreen() {
   const { login } = useAuth();
+  
+  // Управление состоянием полей ввода (Controlled Components)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Обработчик аутентификации.
+  // Выполняет сетевой запрос к серверу и валидирует права доступа пользователя.
   const handleLogin = async () => {
+    // Валидация на стороне клиента перед отправкой запроса (Client-side validation)
     if (!username || !password) {
       Alert.alert('Ошибка', 'Введите логин и пароль');
       return;
@@ -18,6 +25,7 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
+      // POST-запрос к FastAPI серверу
       const response = await api.post('/login', {
         username: username,
         password: password
@@ -25,25 +33,32 @@ export default function LoginScreen() {
 
       const data = response.data;
       if (data.success && data.token) {
+        // Role-Based Access Control (RBAC):
+        // Ограничение мобильного приложения только для студентов.
+        // Админы и преподаватели должны использовать веб-версию.
         if (data.user.role !== 'student') {
           Alert.alert('Доступ запрещен', 'Мобильное приложение доступно только для студентов.');
           return;
         }
+        
+        // Передача токена в глобальный AuthContext для сохранения в AsyncStorage
         await login(data.token, data.user);
       }
     } catch (error: any) {
       console.error(error);
+      // Обработка ошибок HTTP 401/403 или недоступности сервера
       Alert.alert(
         'Ошибка входа', 
         error.response?.data?.detail || 'Неверный логин или пароль. Либо сервер недоступен.'
       );
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Снятие блокировки UI
     }
   };
 
   return (
     <View style={styles.container}>
+      {/* Контейнер с визуальным эффектом Glassmorphism */}
       <View style={styles.glassCard}>
         <View style={styles.logoContainer}>
           <Shield color="#38bdf8" size={64} />
@@ -59,7 +74,7 @@ export default function LoginScreen() {
             placeholderTextColor="rgba(255,255,255,0.4)"
             value={username}
             onChangeText={setUsername}
-            autoCapitalize="none"
+            autoCapitalize="none" // Отключение автоматического регистра (важно для логинов)
           />
         </View>
 
@@ -71,7 +86,7 @@ export default function LoginScreen() {
             placeholderTextColor="rgba(255,255,255,0.4)"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry
+            secureTextEntry // Скрытие символов пароля
           />
         </View>
 
@@ -154,3 +169,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+

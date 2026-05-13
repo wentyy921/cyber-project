@@ -4,7 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { Lock, User, Mail, UserCheck, ShieldCheck } from 'lucide-react';
 
+// Компонент Авторизации и Регистрации (Login / Registration Component).
+// Точка входа в систему. Реализует паттерн "Unified Auth Form" — переключение
+// между входом и регистрацией происходит внутри одного интерфейса с помощью стейта `isLogin`.
 const Login = () => {
+  // Управление состоянием формы и UI
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -12,35 +16,43 @@ const Login = () => {
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Состояние для асинхронной проверки доступности логина (Username Availability Check)
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
 
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Reset username check status when username changes
+  // Сброс статуса проверки логина при его изменении пользователем (Debounce-эффект)
   useEffect(() => {
     setUsernameStatus('idle');
   }, [username]);
 
+  // Главный обработчик сабмита формы (Submit Handler)
+  // Объединяет логику входа и регистрации, разделяя потоки управления в зависимости от `isLogin`.
   const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Предотвращение стандартного поведения браузера (перезагрузки страницы)
     setError('');
     setLoading(true);
 
     try {
       if (isLogin) {
+        // Логика аутентификации (Authentication)
         const response = await api.post('/login', { username, password });
         const { token, user } = response.data;
+        
+        // Запись токена и данных пользователя в глобальный контекст
         login(token, user);
         
-        // Redirect based on role
+        // Role-Based Routing (Маршрутизация на основе ролей)
+        // Направляет пользователя в соответствующий интерфейс согласно его уровню доступа.
         if (user.role === 'admin') navigate('/admin');
         else if (user.role === 'teacher') navigate('/teacher');
         else navigate('/student');
         
       } else {
-        // Registration
-        // Registration validations
+        // Логика регистрации (Registration)
+        // Предварительная валидация данных на клиенте (Client-Side Validation)
         if (username.length < 4) throw new Error("Логин слишком короткий (мин. 4 символа)");
         if (password.length < 6) throw new Error("Пароль слишком короткий (мин. 6 символов)");
         
@@ -54,6 +66,7 @@ const Login = () => {
           throw new Error('Неверный формат Email');
         }
         
+        // Отправка запроса на создание пользователя
         const response = await api.post('/register', { 
           username, 
           password, 
@@ -62,13 +75,13 @@ const Login = () => {
         });
         
         if (response.data.success) {
-          setIsLogin(true); // Switch to login after successful registration
+          setIsLogin(true); // Автоматический переход к форме входа после успешной регистрации
           setError('Регистрация успешна! Теперь вы можете войти.');
-          // Optional: clear fields
           setPassword('');
         }
       }
     } catch (err: any) {
+      // Обработка ошибок сети и валидации (Error Handling)
       if (err.response?.data?.detail) {
         setError(err.response.data.detail);
       } else if (err.message) {
@@ -77,10 +90,11 @@ const Login = () => {
         setError('Произошла ошибка при подключении к серверу');
       }
     } finally {
-      setLoading(false);
+      setLoading(false); // Снятие блокировки кнопки в любом случае
     }
   };
 
+  // Асинхронная проверка доступности логина через API
   const checkUsername = async () => {
     if (username.length < 4) {
       setUsernameStatus('idle');
@@ -95,7 +109,8 @@ const Login = () => {
     }
   };
 
-  // Password strength visualizer
+  // Вычисление сложности пароля (Password Strength Visualizer).
+  // Анализирует пароль по регулярным выражениям для предоставления визуального фидбека (UX).
   const getPasswordStrength = () => {
     if (password.length === 0) return 0;
     let score = 0;
@@ -113,9 +128,10 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative z-10 transition-colors duration-300">
       
+      {/* Главный контейнер формы с эффектом Glassmorphism */}
       <div className="w-full max-w-md glass-panel overflow-hidden border border-white/20">
         
-        {/* Header Section */}
+        {/* Header Section (Заголовок) */}
         <div className="bg-white/5 backdrop-blur-md p-8 text-center text-gray-100 border-b border-white/10 relative overflow-hidden">
           <div className="relative z-10 flex flex-col items-center">
             <div className="bg-white/10 p-4 rounded-full mb-4 backdrop-blur-md shadow-lg shadow-indigo-500/20 border border-white/10">
@@ -126,10 +142,11 @@ const Login = () => {
           </div>
         </div>
 
-        {/* Form Section */}
+        {/* Form Section (Тело формы) */}
         <div className="p-8 bg-black/20">
           <form onSubmit={handleAuth} className="space-y-5" autoComplete="off">
             
+            {/* Блок отображения ошибок */}
             {error && (
               <div className={`p-3 rounded-lg text-sm ${error.includes('успешна') ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-600 border border-red-100'}`}>
                 {error}
@@ -139,6 +156,7 @@ const Login = () => {
             <div className="space-y-1">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex justify-between">
                 <span>Логин</span>
+                {/* Кнопка ручной проверки логина (только при регистрации) */}
                 {!isLogin && username.length > 0 && (
                    <button type="button" className="text-xs text-indigo-600 cursor-pointer hover:underline focus:outline-none font-semibold" onClick={checkUsername}>
                      {usernameStatus === 'idle' ? 'Проверить' : 
@@ -163,6 +181,7 @@ const Login = () => {
               </div>
             </div>
 
+            {/* Дополнительные поля, отображаемые только в режиме регистрации (Conditional Rendering) */}
             {!isLogin && (
               <>
                 <div className="space-y-1 animate-fade-in">
@@ -219,6 +238,7 @@ const Login = () => {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+              {/* Полоса индикации сложности пароля */}
               {!isLogin && password.length > 0 && (
                 <div className="mt-2 h-1.5 w-full bg-gray-200 rounded-full overflow-hidden flex">
                   <div className={`h-full transition-all duration-300 ${strengthColor}`} style={{ width: `${(Math.max(1, strength) / 4) * 100}%` }}></div>
@@ -226,6 +246,7 @@ const Login = () => {
               )}
             </div>
 
+            {/* Кнопка отправки формы. Блокируется (disabled) во время выполнения API-запроса (loading) */}
             <button
               type="submit"
               disabled={loading}
@@ -241,6 +262,7 @@ const Login = () => {
 
           </form>
 
+          {/* Переключатель режимов Вход / Регистрация */}
           <div className="mt-6 text-center text-sm text-gray-400">
             {isLogin ? "Еще нет аккаунта?" : "Уже есть аккаунт?"}{' '}
             <button 
@@ -258,3 +280,4 @@ const Login = () => {
 };
 
 export default Login;
+

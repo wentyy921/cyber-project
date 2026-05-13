@@ -10,6 +10,8 @@ import Quiz from './student/Quiz';
 import FullPageEditor from './teacher/FullPageEditor';
 import KnowledgeManager from './teacher/KnowledgeManager';
 
+// Главный лейаут кабинета преподавателя.
+// Предоставляет интерфейс для управления образовательным контентом и мониторинга прогресса студентов.
 const TeacherDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -20,6 +22,8 @@ const TeacherDashboard = () => {
     navigate('/');
   };
 
+  // Конфигурация вкладок меню.
+  // Архитектурно вынесена из разметки для соблюдения принципа DRY (Don't Repeat Yourself).
   const navItems = [
     { path: '/teacher', icon: <BookOpen size={20} />, label: 'Управление курсами' },
     { path: '/teacher/students', icon: <Users size={20} />, label: 'Мои студенты' },
@@ -28,6 +32,9 @@ const TeacherDashboard = () => {
     { path: '/teacher/settings', icon: <UserCircle size={20} />, label: 'Профиль' },
   ];
 
+  // Определение активного маршрута для стилизации.
+  // Обрабатывает корневой маршрут (/teacher) отдельно от вложенных,
+  // чтобы избежать ложного срабатывания подсветки.
   const isActive = (path: string) => {
     if (path === '/teacher') {
       return location.pathname === '/teacher';
@@ -37,8 +44,9 @@ const TeacherDashboard = () => {
 
   return (
     <div className="flex flex-col md:flex-row h-screen overflow-hidden p-4 gap-4 relative z-10">
-      {/* Sidebar */}
+      {/* Sidebar (Боковая панель) */}
       <aside className="glass-panel w-full md:w-72 flex flex-col shrink-0 overflow-y-auto">
+        {/* Профиль текущего пользователя (преподавателя) */}
         <div className="p-6 border-b border-white/10 flex items-center gap-4">
           {user?.avatar ? (
             <img src={user.avatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover border-2 border-indigo-400" />
@@ -53,6 +61,7 @@ const TeacherDashboard = () => {
           </div>
         </div>
         
+        {/* Рендеринг навигационных ссылок */}
         <nav className="flex-1 p-4 space-y-2">
           {navItems.map((item) => (
             <Link
@@ -81,7 +90,7 @@ const TeacherDashboard = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content Area (Окно рендеринга страниц преподавателя) */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto glass-panel">
         <Routes>
           <Route path="/" element={<CourseManager />} />
@@ -89,8 +98,10 @@ const TeacherDashboard = () => {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/knowledge" element={<KnowledgeManager />} />
           <Route path="/settings" element={<TeacherProfile />} />
+          {/* Маршруты для предпросмотра (Preview) контента от лица студента */}
           <Route path="/preview/course/:id" element={<CourseView />} />
           <Route path="/preview/quiz/:slug" element={<Quiz />} />
+          {/* Полноэкранный редактор лекций (WYSIWYG) */}
           <Route path="/course/:id/edit" element={<FullPageEditor />} />
         </Routes>
       </main>
@@ -99,3 +110,4 @@ const TeacherDashboard = () => {
 };
 
 export default TeacherDashboard;
+
